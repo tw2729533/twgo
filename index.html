@@ -2063,22 +2063,50 @@
         makeCardDraggable(divs[g]);
       }
     }
-    // v1.21+：直接隱藏右側編輯面板與頁籤（移出迴圈）
-    var editorPanel = document.getElementById('vac-editor');
-    if (editorPanel) {
-      editorPanel.style.setProperty('display', 'none', 'important');
-      editorPanel.style.setProperty('visibility', 'hidden', 'important');
-      editorPanel.style.setProperty('width', '0', 'important');
+    // 5. 自動點擊「編輯村里」面板右上角收合按鈕（由原生邏輯釋放右側空間）
+    var allHeads = document.querySelectorAll('h1, h2, h3, h4, div, span');
+    for (var h = 0; h < allHeads.length; h++) {
+      var ht = (allHeads[h].textContent || '').replace(/\s+/g, '');
+      if (ht === '編輯村里' && allHeads[h].offsetParent !== null) {
+        var panel = allHeads[h].closest('aside, section, div');
+        while (panel && panel.parentElement && panel.parentElement !== document.body && panel.offsetHeight < 250) {
+          panel = panel.parentElement;
+        }
+        if (panel && panel.offsetWidth > 180) {
+          var panelBtns = panel.querySelectorAll('button');
+          var clickedCollapse = false;
+          for (var pb = 0; pb < panelBtns.length; pb++) {
+            var pbt = (panelBtns[pb].textContent || '').replace(/\s+/g, '');
+            if (pbt === '>' || pbt === '›' || pbt === '»' || pbt === '收合' || (panelBtns[pb].title || '').indexOf('收合') !== -1) {
+              panelBtns[pb].click();
+              clickedCollapse = true;
+              break;
+            }
+          }
+          if (!clickedCollapse) {
+            panel.style.setProperty('display', 'none', 'important');
+          }
+          setTimeout(function() {
+            try {
+              window.dispatchEvent(new Event('resize'));
+              if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') {
+                map.invalidateSize(true);
+              }
+            } catch (_) {}
+          }, 150);
+        }
+        break;
+      }
     }
-    var editorTab = document.getElementById('vac-right-tab');
-    if (editorTab) {
-      editorTab.style.setProperty('display', 'none', 'important');
-      editorTab.style.setProperty('visibility', 'hidden', 'important');
+    // 6. 收合後隱藏右側「編輯」與「訪視」垂直頁籤
+    var rightTabs = document.querySelectorAll('button, div');
+    for (var rtIdx = 0; rtIdx < rightTabs.length; rtIdx++) {
+      var tabEl = rightTabs[rtIdx];
+      var tabTxt = (tabEl.textContent || '').replace(/\s+/g, '');
+      if ((tabTxt === '編輯' || tabTxt === '訪視') && tabEl.offsetWidth > 0 && tabEl.offsetWidth < 72 && tabEl.offsetHeight > 30 && tabEl.offsetHeight < 150) {
+        tabEl.style.setProperty('display', 'none', 'important');
+      }
     }
-    // 也隱藏所有右側面板
-    document.querySelectorAll('.vac-side-right').forEach(function(el) {
-      el.style.setProperty('display', 'none', 'important');
-    });
   }
     // v1.21+：左側篩選面板收合（保留頁籤可展開）
     var leftPanel = document.getElementById('vac-zone-filter');
