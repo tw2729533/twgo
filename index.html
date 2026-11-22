@@ -1896,6 +1896,31 @@
       return `
 <script>
 (function() {
+  // 強制隱藏右側編輯面板，並讓地圖容器撐滿 100% 寬度
+  if (!document.getElementById('kcv-map-fullwidth-fix')) {
+    var st = document.createElement('style');
+    st.id = 'kcv-map-fullwidth-fix';
+    st.textContent = [
+      '#vac-editor, #vac-right-tab { display: none !important; width: 0 !important; }',
+      '#map, .leaflet-container { right: 0 !important; margin-right: 0 !important; width: 100% !important; max-width: 100% !important; }'
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  // Leaflet 畫布重算
+  var resizeTimer = null;
+  function triggerLeafletResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function() {
+      try {
+        window.dispatchEvent(new Event('resize'));
+        if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') {
+          map.invalidateSize(true);
+        }
+      } catch (_) {}
+    }, 120);
+  }
+
   function makeCardDraggable(card) {
     if (!card || card.dataset.kcvDraggable === '1') return;
     card.dataset.kcvDraggable = '1';
@@ -2044,22 +2069,21 @@
     var editorTab = document.getElementById('vac-right-tab');
     if (editorTab) editorTab.style.setProperty('display', 'none', 'important');
   }
-    // v1.21+：左側篩選面板強制收合（避免地圖 JS 覆寫）
+    // v1.21+：左側篩選面板收合（保留頁籤可展開）
     var leftPanel = document.getElementById('vac-zone-filter');
     if (leftPanel) {
       leftPanel.classList.add('vac-collapsed');
-      leftPanel.style.setProperty('display', 'none', 'important');
+      leftPanel.style.removeProperty('display');
     }
     var leftTab = document.getElementById('vac-left-tab');
     if (leftTab) {
       leftTab.setAttribute('aria-expanded', 'false');
-      leftTab.style.setProperty('display', 'block', 'important');
+      leftTab.style.removeProperty('display');
     }
     // 地圖容器填滿可用空間
-    var mapWrap = document.querySelector('#vac-map, .leaflet-container');
-    if (mapWrap) {
-      mapWrap.style.setProperty('width', '100%', 'important');
-      if (mapWrap.parentElement) mapWrap.parentElement.style.setProperty('width', '100%', 'important');
+    var mapWrap = document.querySelector('.leaflet-container');
+    if (mapWrap && mapWrap.parentElement) {
+      mapWrap.parentElement.style.setProperty('width', '100%', 'important');
     }
 
 
@@ -2088,6 +2112,7 @@
     if (!e.data) return;
     if (e.data.type === 'KCV_REALIGN_UI') {
       applyKcvMapCustomizations();
+      triggerLeafletResize();
       return;
     }
     if (e.data.type === 'KCV_FORCE_RESTYLE') {
@@ -2124,6 +2149,8 @@
     applyKcvMapCustomizations();
     setTimeout(applyKcvMapCustomizations, 350);
     setTimeout(applyKcvMapCustomizations, 1000);
+    setTimeout(triggerLeafletResize, 200);
+    setTimeout(triggerLeafletResize, 800);
     var mo = new MutationObserver(function() { applyKcvMapCustomizations(); });
     mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('resize', applyKcvMapCustomizations);
@@ -2917,7 +2944,14 @@
       if (tabId === 'tab5') renderTab5();
       if (tabId === 'tab6') {
         renderTab6Header();
-        if (state.mapReady) syncCurrentPlanToMap(false);
+        if (state.mapReady) {
+          syncCurrentPlanToMap(false);
+          // 觸發地圖重算尺寸
+          const frame = document.getElementById('offlineMapFrame');
+          if (frame && frame.contentWindow) {
+            setTimeout(() => frame.contentWindow.postMessage({ type: 'KCV_REALIGN_UI' }, '*'), 200);
+          }
+        }
       }
     }
 
