@@ -1901,8 +1901,9 @@
     var st = document.createElement('style');
     st.id = 'kcv-map-fullwidth-fix';
     st.textContent = [
-      '#vac-editor, #vac-right-tab, .vac-side-right { display: none !important; width: 0 !important; visibility: hidden !important; pointer-events: none !important; }',
-      '#map, .leaflet-container { right: 0 !important; margin-right: 0 !important; width: 100% !important; max-width: 100% !important; }'
+      '#vac-editor, #vac-right-tab, .vac-side-right, #vac-editor-panel, #right-panel, aside[id*="editor"], section[id*="editor"], [class*="editor-panel"] { display: none !important; width: 0 !important; min-width: 0 !important; max-width: 0 !important; visibility: hidden !important; pointer-events: none !important; overflow: hidden !important; }',
+      '#map, .leaflet-container { right: 0 !important; margin-right: 0 !important; width: 100% !important; max-width: 100% !important; left: 0 !important; }',
+      'body { margin-right: 0 !important; padding-right: 0 !important; }'
     ].join('\n');
     (document.head || document.documentElement).appendChild(st);
   }
@@ -2067,7 +2068,7 @@
     var allHeads = document.querySelectorAll('h1, h2, h3, h4, div, span');
     for (var h = 0; h < allHeads.length; h++) {
       var ht = (allHeads[h].textContent || '').replace(/\s+/g, '');
-      if (ht === '編輯村里' && allHeads[h].offsetParent !== null) {
+      if (ht.indexOf('編輯村里') !== -1 && allHeads[h].offsetWidth > 0) {
         var panel = allHeads[h].closest('aside, section, div');
         while (panel && panel.parentElement && panel.parentElement !== document.body && panel.offsetHeight < 250) {
           panel = panel.parentElement;
@@ -2083,8 +2084,19 @@
               break;
             }
           }
-          if (!clickedCollapse) {
-            panel.style.setProperty('display', 'none', 'important');
+          // 無論是否點到收合按鈕，都強制隱藏面板以確保右側空間釋放
+          panel.style.setProperty('display', 'none', 'important');
+          panel.style.setProperty('width', '0px', 'important');
+          panel.style.setProperty('min-width', '0', 'important');
+          panel.style.setProperty('max-width', '0', 'important');
+          panel.style.setProperty('overflow', 'hidden', 'important');
+          panel.style.setProperty('visibility', 'hidden', 'important');
+          if (panel.parentElement && panel.parentElement !== document.body) {
+            var pp = panel.parentElement;
+            if (pp.offsetWidth > 150) {
+              pp.style.setProperty('width', '100%', 'important');
+              pp.style.setProperty('margin-right', '0', 'important');
+            }
           }
           setTimeout(function() {
             try {
@@ -2107,8 +2119,8 @@
         tabEl.style.setProperty('display', 'none', 'important');
       }
     }
-  }
-    // v1.21+：左側篩選面板收合（保留頁籤可展開）
+
+    // 左側篩選面板收合（保留頁籤可展開）— 移入函式確保每次都重套
     var leftPanel = document.getElementById('vac-zone-filter');
     if (leftPanel) {
       leftPanel.classList.add('vac-collapsed');
@@ -2123,7 +2135,10 @@
     var mapWrap = document.querySelector('.leaflet-container');
     if (mapWrap && mapWrap.parentElement) {
       mapWrap.parentElement.style.setProperty('width', '100%', 'important');
+      mapWrap.style.setProperty('width', '100%', 'important');
     }
+  }
+
 
 
   function findCsvZoneInput() {
