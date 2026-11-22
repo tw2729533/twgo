@@ -3,7 +3,7 @@
 <head>
   <!--
   ==================== 《63 服務網儀表板專案記憶》 ====================
-  1. 版本規範：採遞增版號（目前 v1.21），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
+  1. 版本規範：採遞增版號（目前 v1.21，已修正 Banner 文案、DB_KEY 版號、showProg 全域、extractNumFromLabel），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
   2. 開放網頁去識別化（v1.17～v1.21）：
      - 移除所有對外可見之機關名稱與縮寫（標題列、瀏覽器分頁標題、頁尾、匯出檔名、Logo 改為 SRV）。
      - 內嵌離線地圖採「HTML/JS 載入前原始碼替換 + DOM TreeWalker」雙重去識別化，標題統一改為「責任區地圖」，並依實際寬度重算「服務網人數」按鈕緊鄰右側座標（z-index 置頂防遮擋）。
@@ -173,7 +173,7 @@
       <div class="flex items-start sm:items-center gap-2.5 text-xs sm:text-sm text-amber-900">
         <span class="px-2 py-0.5 rounded-md bg-amber-400 text-slate-900 font-extrabold text-xs shrink-0">範本提醒</span>
         <span>
-          本頁已內嵌正式資料，開啟即顯示方案1～7評估結果（僅供功能操作與版面預覽）。請點選下方「👉 點此載入正式資料」或匯入 ZIP 整合包以檢視真實評估結果！
+          本頁已內嵌正式資料（方案1～7），開啟即顯示評估結果。若需離線地圖，請確認同目錄有 data.zip，或點擊下方按鈕手動匯入。
         </span>
       </div>
       <div class="flex items-center gap-2 shrink-0">
@@ -649,7 +649,7 @@
 
     const DB_NAME = 'Srv63NetsDashboardDB';
     const DB_STORE = 'cache';
-    const DB_KEY = 'dashboard_state_v120';
+    const DB_KEY = 'dashboard_state_v121';
 
     const HIGH_LOAD_MULTIPLIER = 1.35;
     const LOW_LOAD_MULTIPLIER = 0.75;
@@ -875,7 +875,11 @@
     }
 
     function extractNumFromLabel(label) {
-      const m = String(label || '').match(/(\d+)(?:[\-_之](\d+))?/);
+      const s = String(label || '');
+      // 優先取括號內數字（如 第9服務網(55)），否則取第一組數字
+      const paren = s.match(/\((\d+)\)/);
+      if (paren) return parseInt(paren[1], 10);
+      const m = s.match(/(\d+)(?:[\-_之](\d+))?/);
       if (!m) return 9999;
       return parseInt(m[1], 10) + (m[2] ? parseInt(m[2], 10) * 0.01 : 0);
     }
@@ -2640,8 +2644,8 @@
         return false;
       }
       const progress = document.getElementById('uploadProgressMsg');
-      if (userTriggered && progress) {
-        progress.textContent = '正在從同目錄靜態空間載入正式 ZIP 整合包...';
+      if (progress) {
+        progress.textContent = '正在從同目錄載入離線地圖...';
         progress.classList.remove('hidden');
       }
       for (const name of candidates) {
@@ -2651,12 +2655,20 @@
             const blob = await resp.blob();
             const file = new File([blob], name, { type: 'application/zip' });
             await handleIncomingFiles([file]);
+            // Force map UI refresh after load
+            setTimeout(() => {
+              renderTab6Header();
+              if (state.mapReady) syncCurrentPlanToMap(false);
+            }, 500);
+            if (progress) progress.classList.add('hidden');
             return true;
           }
-        } catch (_) {}
+        } catch (err) {
+          console.warn('Fetch failed for', name, err);
+        }
       }
+      if (progress) progress.classList.add('hidden');
       if (userTriggered) {
-        if (progress) progress.classList.add('hidden');
         alert('同目錄下未偵測到 data.zip，請點擊「選擇檔案 / ZIP」手動匯入，或確認已將 ZIP 更名為 data.zip 上傳至同一資料夾。');
       }
       return false;
@@ -2967,15 +2979,32 @@
       return true;
     }
 
+
+    // 全域進度訊息（避免啟動流程呼叫未定義的 showProg）
+    function showProg(msg) {
+      const el = document.getElementById('uploadProgressMsg');
+      if (el) {
+        el.textContent = msg;
+        el.classList.remove('hidden');
+        if (msg && !msg.includes('⚠️')) {
+          setTimeout(() => el.classList.add('hidden'), 4000);
+        }
+      }
+    }
     window.addEventListener('DOMContentLoaded', async () => {
       setupDropzone();
       // Prefer embedded data (v1.21)
       if (loadEmbeddedData()) {
         renderAll();
-        showProg('已載入內嵌正式資料（方案1～7）。');
+        showProg('已載入內嵌正式資料（方案1～7）。正在嘗試載入離線地圖...');
         // 即使有內嵌資料，仍嘗試從同目錄 data.zip 載入離線地圖
         if (location.protocol === 'http:' || location.protocol === 'https:') {
-          setTimeout(() => tryFetchHostedZip(false), 300);
+          setTimeout(async () => {
+            const ok = await tryFetchHostedZip(false);
+            if (!ok) {
+              showProg('內嵌資料已載入。若需地圖，請確認 data.zip 與 index.html 在同一目錄。');
+            }
+          }, 500);
         }
         return;
       }
