@@ -3,7 +3,7 @@
 <head>
   <!--
   ==================== 《63 服務網儀表板專案記憶》 ====================
-  1. 版本規範：採遞增版號（目前 v1.21，已修正 extractNumFromLabel、IndexedDB 地圖快取、診斷報告文案、showProg 計時器），已修正 Banner 文案、DB_KEY 版號、showProg 全域、extractNumFromLabel），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
+  1. 版本規範：採遞增版號（目前 v1.21，已修正左側面板收合與地圖填滿），已修正 extractNumFromLabel、IndexedDB 地圖快取、診斷報告文案、showProg 計時器），已修正 Banner 文案、DB_KEY 版號、showProg 全域、extractNumFromLabel），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
   2. 開放網頁去識別化（v1.17～v1.21）：
      - 移除所有對外可見之機關名稱與縮寫（標題列、瀏覽器分頁標題、頁尾、匯出檔名、Logo 改為 SRV）。
      - 內嵌離線地圖採「HTML/JS 載入前原始碼替換 + DOM TreeWalker」雙重去識別化，標題統一改為「責任區地圖」，並依實際寬度重算「服務網人數」按鈕緊鄰右側座標（z-index 置頂防遮擋）。
@@ -2044,6 +2044,20 @@
     var editorTab = document.getElementById('vac-right-tab');
     if (editorTab) editorTab.style.setProperty('display', 'none', 'important');
   }
+    // v1.21+：左側篩選面板預設收合
+    var leftPanel = document.getElementById('vac-zone-filter');
+    if (leftPanel && !leftPanel.classList.contains('vac-collapsed')) {
+      leftPanel.classList.add('vac-collapsed');
+    }
+    var leftTab = document.getElementById('vac-left-tab');
+    if (leftTab) leftTab.setAttribute('aria-expanded', 'false');
+    // 地圖容器填滿可用空間
+    var mapEl = document.querySelector('.leaflet-container');
+    if (mapEl && mapEl.parentElement) {
+      mapEl.parentElement.style.setProperty('width', '100%', 'important');
+      mapEl.style.setProperty('width', '100%', 'important');
+    }
+
 
   function findCsvZoneInput() {
     var inputs = Array.from(document.querySelectorAll('input[type="file"]'));
