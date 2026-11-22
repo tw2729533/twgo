@@ -2044,18 +2044,22 @@
     var editorTab = document.getElementById('vac-right-tab');
     if (editorTab) editorTab.style.setProperty('display', 'none', 'important');
   }
-    // v1.21+：左側篩選面板預設收合
+    // v1.21+：左側篩選面板強制收合（避免地圖 JS 覆寫）
     var leftPanel = document.getElementById('vac-zone-filter');
-    if (leftPanel && !leftPanel.classList.contains('vac-collapsed')) {
+    if (leftPanel) {
       leftPanel.classList.add('vac-collapsed');
+      leftPanel.style.setProperty('display', 'none', 'important');
     }
     var leftTab = document.getElementById('vac-left-tab');
-    if (leftTab) leftTab.setAttribute('aria-expanded', 'false');
+    if (leftTab) {
+      leftTab.setAttribute('aria-expanded', 'false');
+      leftTab.style.setProperty('display', 'block', 'important');
+    }
     // 地圖容器填滿可用空間
-    var mapEl = document.querySelector('.leaflet-container');
-    if (mapEl && mapEl.parentElement) {
-      mapEl.parentElement.style.setProperty('width', '100%', 'important');
-      mapEl.style.setProperty('width', '100%', 'important');
+    var mapWrap = document.querySelector('#vac-map, .leaflet-container');
+    if (mapWrap) {
+      mapWrap.style.setProperty('width', '100%', 'important');
+      if (mapWrap.parentElement) mapWrap.parentElement.style.setProperty('width', '100%', 'important');
     }
 
 
