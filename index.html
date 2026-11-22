@@ -1967,19 +1967,21 @@
     }
 
     if (netCountBtn) {
-      netCountBtn.style.setProperty('position', 'absolute', 'important');
+      netCountBtn.style.setProperty('position', 'fixed', 'important');
       netCountBtn.style.setProperty('z-index', '3000', 'important');
       netCountBtn.style.setProperty('display', 'inline-flex', 'important');
       netCountBtn.style.setProperty('visibility', 'visible', 'important');
-      // 固定在地圖控制列左側「責任區地圖」按鈕右側
-      var zoneBtn = document.querySelector('#vac-zone-filter .vac-panel-head span, .vac-side-tab');
-      if (zoneBtn) {
-        var zr = zoneBtn.getBoundingClientRect();
-        netCountBtn.style.setProperty('left', Math.round(zr.right + 8) + 'px', 'important');
-        netCountBtn.style.setProperty('top', Math.round(zr.top) + 'px', 'important');
+      netCountBtn.style.setProperty('bottom', 'auto', 'important');
+      netCountBtn.style.setProperty('right', 'auto', 'important');
+      if (titleEl) {
+        var tr = titleEl.getBoundingClientRect();
+        if (tr.width > 0 && tr.height > 0) {
+          netCountBtn.style.setProperty('left', Math.round(tr.right + 12) + 'px', 'important');
+          netCountBtn.style.setProperty('top', Math.round(tr.top + (tr.height - (netCountBtn.offsetHeight || 36)) / 2) + 'px', 'important');
+        }
       } else {
-        netCountBtn.style.setProperty('left', '120px', 'important');
-        netCountBtn.style.setProperty('top', '8px', 'important');
+        netCountBtn.style.setProperty('left', '140px', 'important');
+        netCountBtn.style.setProperty('top', '12px', 'important');
       }
     }
 
@@ -2035,13 +2037,12 @@
       if (gt.indexOf('服務網人數') !== -1 && gt.indexOf('總計') !== -1 && divs[g].offsetWidth < 420 && divs[g].offsetHeight > 80) {
         makeCardDraggable(divs[g]);
       }
-    // v1.21+：直接隱藏右側編輯面板與頁籤
+    }
+    // v1.21+：直接隱藏右側編輯面板與頁籤（移出迴圈）
     var editorPanel = document.getElementById('vac-editor');
     if (editorPanel) editorPanel.style.setProperty('display', 'none', 'important');
     var editorTab = document.getElementById('vac-right-tab');
     if (editorTab) editorTab.style.setProperty('display', 'none', 'important');
-
-    }
   }
 
   function findCsvZoneInput() {
@@ -2964,7 +2965,7 @@
         nets: { base: row[8] },
         zones: { base: row[7] },
         visits: row[9] || 0,
-        key: (row[0] || '') + '|' + (row[1] || '')
+        key: makeKey(row[0], row[1])
       }));
       // Apply plan assignments
       Object.keys(EMBEDDED_DATA.p || {}).forEach(pk => {
@@ -3008,6 +3009,7 @@
         if (cached && cached.offlineMapFiles && cached.offlineMapFiles['kaohsiung-vac-zones.html']) {
           state.offlineMapFiles = cached.offlineMapFiles;
           await mountOfflineMapIfAvailable();
+          updateStatusUi();
           showProg('已載入內嵌資料，並從本機快取還原離線地圖。');
           return;
         }
