@@ -2132,6 +2132,26 @@
         .replace(/rightOpen = !!open;/g, 'rightOpen = false;')
         .replace(/rightOpen = d\.right;/g, 'rightOpen = false;');
 
+      // v1.23：左側「責任區篩選」取消打勾時，同步取消該責任區所屬的服務網（其他仍勾選的責任區有用到的服務網保留）
+      htmlText = htmlText
+        .split('function checkNetsForZone(zoneName) {').join(
+          'function uncheckNetsForZone(zoneName) {' +
+          ' var nets = netsUsedByZone(zoneName); var keep = {};' +
+          ' document.querySelectorAll(".vac-zone-cb:checked").forEach(function(zcb) {' +
+          '   if (zcb.value === zoneName) return; var k = netsUsedByZone(zcb.value);' +
+          '   Object.keys(k).forEach(function(n) { keep[n] = true; });' +
+          ' });' +
+          ' var changed = false;' +
+          ' document.querySelectorAll(".vac-net-cb").forEach(function(ncb) {' +
+          '   if (nets[ncb.value] && !keep[ncb.value] && ncb.checked) { ncb.checked = false; changed = true; }' +
+          ' });' +
+          ' if (changed && typeof updateNetStatus === "function") updateNetStatus();' +
+          ' return changed;' +
+          '}\n' +
+          'function checkNetsForZone(zoneName) {')
+        .split('if (cb.checked) checkNetsForZone(cb.value);').join(
+          'if (cb.checked) checkNetsForZone(cb.value); else uncheckNetsForZone(cb.value);');
+
       Object.keys(assetUrls).forEach(relPath => {
         const escaped = relPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const re = new RegExp(`(["'])(\\.\\/)?${escaped}(["'])`, 'g');
