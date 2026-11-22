@@ -1893,162 +1893,80 @@
 
     // ==================== 內嵌離線地圖客製橋接腳本 (v1.21 強化去識別化與隱藏工具) ====================
     function createMapBridgeScript() {
+      // 注意：此字串為 template literal，regex 反斜線必須寫成雙反斜線（\\s），換行寫成 \\n
       return `
+<style id="kcv-map-lock-style">
+  /* 1. 鎖住並隱藏右側「編輯村里」面板與「編輯」頁籤（唯讀檢視） */
+  #vac-editor, #vac-right-tab, #vac-right-collapse {
+    display: none !important; visibility: hidden !important; pointer-events: none !important;
+  }
+  /* 2. 「服務網人數」按鈕併入「責任區地圖」標題列右側 */
+  #vac-app-title.kcv-title-bar {
+    display: flex !important; align-items: center; gap: 10px;
+    padding: 5px 6px 5px 14px !important; max-width: none !important;
+  }
+  #vac-app-title.kcv-title-bar #vac-net-pop-btn {
+    position: static !important; left: auto !important; right: auto !important;
+    top: auto !important; bottom: auto !important; transform: none !important;
+    height: 30px !important; padding: 0 12px !important; margin: 0 !important;
+    pointer-events: auto !important; cursor: pointer !important; flex-shrink: 0;
+    box-shadow: none !important; white-space: nowrap;
+  }
+  /* 3. 服務網人數卡片預設出現在標題下方（使用者拖曳後仍以拖曳位置為準） */
+  html body #vac-net-pop { top: 62px; bottom: auto; }
+</style>
 <script>
 (function() {
-  // 強制隱藏右側編輯面板，並讓地圖容器撐滿 100% 寬度
-  if (!document.getElementById('kcv-map-fullwidth-fix')) {
-    var st = document.createElement('style');
-    st.id = 'kcv-map-fullwidth-fix';
-    st.textContent = [
-      '#vac-editor, #vac-right-tab, .vac-side-right { display: none !important; width: 0 !important; visibility: hidden !important; pointer-events: none !important; }',
-      '#map, .leaflet-container { right: 0 !important; margin-right: 0 !important; width: 100% !important; max-width: 100% !important; }'
-    ].join('\n');
-    (document.head || document.documentElement).appendChild(st);
+  var applyTimer = null;
+  function scheduleApply(delay) {
+    if (applyTimer) clearTimeout(applyTimer);
+    applyTimer = setTimeout(applyKcvMapCustomizations, delay || 120);
   }
 
-  // Leaflet 畫布重算
-  var resizeTimer = null;
   function triggerLeafletResize() {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(function() {
+    setTimeout(function() {
       try {
         window.dispatchEvent(new Event('resize'));
-        if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') {
-          map.invalidateSize(true);
-        }
+        if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') map.invalidateSize(true);
       } catch (_) {}
     }, 120);
   }
 
-  function makeCardDraggable(card) {
-    if (!card || card.dataset.kcvDraggable === '1') return;
-    card.dataset.kcvDraggable = '1';
-    card.style.cursor = 'move';
-    var dragging = false, startX = 0, startY = 0, origLeft = 0, origTop = 0;
-    card.addEventListener('mousedown', function(e) {
-      if (e.target && (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.closest('button'))) return;
-      dragging = true;
-      var rect = card.getBoundingClientRect();
-      card.style.right = 'auto';
-      card.style.bottom = 'auto';
-      card.style.left = rect.left + 'px';
-      card.style.top = rect.top + 'px';
-      startX = e.clientX;
-      startY = e.clientY;
-      origLeft = rect.left;
-      origTop = rect.top;
-      e.preventDefault();
-    });
-    window.addEventListener('mousemove', function(e) {
-      if (!dragging) return;
-      card.style.left = (origLeft + e.clientX - startX) + 'px';
-      card.style.top = (origTop + e.clientY - startY) + 'px';
-    });
-    window.addEventListener('mouseup', function() { dragging = false; });
+  function deidentifyTitle() {
+    var title = document.getElementById('vac-app-title');
+    if (!title) return null;
+    var b = title.querySelector('b');
+    if (b && b.textContent !== '責任區地圖') {
+      b.textContent = (b.textContent || '').replace(/高雄市榮民服務處|高雄市榮服處/g, '') || '責任區地圖';
+    }
+    return title;
   }
 
-  function deidentifyTextNodes() {
-    if (!document.body) return null;
-    var titleBox = null;
-    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
-    var node;
-    while ((node = walker.nextNode())) {
-      var val = node.nodeValue || '';
-      if (val.indexOf('高雄市榮服處') !== -1 || val.indexOf('高雄市榮民服務處') !== -1) {
-        node.nodeValue = val
-          .replace(/高雄市榮民服務處/g, '')
-          .replace(/高雄市榮服處/g, '')
-          .replace(/^\\s+/, '');
-      }
-      var clean = (node.nodeValue || '').replace(/\\s+/g, '');
-      if (clean === '責任區地圖' && node.parentElement) {
-        var box = node.parentElement.closest('div, header, a, button') || node.parentElement;
-        if (box.offsetWidth > 40 && box.offsetHeight > 20 && box.offsetHeight < 90) {
-          titleBox = box;
-        }
-      }
-    }
-    return titleBox;
+  function pinNetCountButton(title) {
+    var btn = document.getElementById('vac-net-pop-btn');
+    if (!btn || !title) return;
+    title.classList.add('kcv-title-bar');
+    if (btn.parentElement !== title) title.appendChild(btn);
   }
 
-  function applyKcvMapCustomizations() {
-    var titleEl = deidentifyTextNodes();
-
-    // 1. 先將「服務網人數」按鈕抽離至 body 並置頂對齊「責任區地圖」右側（避免卡死）
-    var netCountBtn = document.getElementById('kcv-pinned-netcount-btn');
-    if (!netCountBtn) {
-      var candidates = document.querySelectorAll('button, a, div, span');
-      for (var j = 0; j < candidates.length; j++) {
-        var b = candidates[j];
-        var bt = (b.textContent || '').replace(/\s+/g, '');
-        if (bt === '服務網人數' && (b.tagName === 'BUTTON' || (b.offsetHeight > 0 && b.offsetHeight < 60))) {
-          netCountBtn = b;
-          netCountBtn.id = 'kcv-pinned-netcount-btn';
-          document.body.appendChild(netCountBtn);
-          break;
-        }
+  function lockEditor() {
+    var editor = document.getElementById('vac-editor');
+    if (editor) {
+      editor.classList.add('vac-collapsed');
+      editor.setAttribute('aria-hidden', 'true');
+      editor.setAttribute('inert', '');
+      var ctrls = editor.querySelectorAll('input, select, textarea, button');
+      for (var i = 0; i < ctrls.length; i++) {
+        if (!ctrls[i].disabled && ctrls[i].type !== 'file') ctrls[i].disabled = true;
       }
     }
-
-    if (netCountBtn) {
-      netCountBtn.style.setProperty('position', 'fixed', 'important');
-      netCountBtn.style.setProperty('z-index', '3000', 'important');
-      netCountBtn.style.setProperty('display', 'inline-flex', 'important');
-      netCountBtn.style.setProperty('visibility', 'visible', 'important');
-      netCountBtn.style.setProperty('bottom', 'auto', 'important');
-      netCountBtn.style.setProperty('right', 'auto', 'important');
-      netCountBtn.style.setProperty('transform', 'none', 'important');
-      var placed = false;
-      if (titleEl) {
-        var tr = titleEl.getBoundingClientRect();
-        if (tr.width > 0 && tr.height > 0 && tr.right > 10) {
-          netCountBtn.style.setProperty('left', Math.round(tr.right + 12) + 'px', 'important');
-          netCountBtn.style.setProperty('top', Math.round(tr.top + (tr.height - (netCountBtn.offsetHeight || 32)) / 2) + 'px', 'important');
-          placed = true;
-        }
-      }
-      if (!placed) {
-        // fallback 位置，避免卡在地圖左下角
-        netCountBtn.style.setProperty('left', '180px', 'important');
-        netCountBtn.style.setProperty('top', '6px', 'important');
-      }
+    if (document.body && !document.body.classList.contains('vac-right-collapsed')) {
+      document.body.classList.add('vac-right-collapsed');
+      triggerLeafletResize();
     }
+  }
 
-    // 2. 隱藏上方工具列（工具、收合工具、我的位置、時速、排訪、門牌提示條等）
-    var hideKeywords = ['收合工具', '我的位置', '優化訪序', '尚未載入全市門牌索引', 'GPS定位', '設為出發地', '清本機個資'];
-    var toolbarNodes = document.querySelectorAll('button, div, span');
-    for (var k = 0; k < toolbarNodes.length; k++) {
-      var node = toolbarNodes[k];
-      if (node.id === 'kcv-pinned-netcount-btn') continue;
-      var nt = (node.textContent || '').replace(/\\s+/g, '');
-      if (nt === '工具' && node.tagName === 'BUTTON') {
-        node.style.setProperty('display', 'none', 'important');
-        if (node.parentElement && node.parentElement !== document.body && node.parentElement.offsetHeight < 95) {
-          node.parentElement.style.setProperty('display', 'none', 'important');
-        }
-      }
-      for (var m = 0; m < hideKeywords.length; m++) {
-        if (nt === hideKeywords[m] || (hideKeywords[m].length >= 5 && nt.indexOf(hideKeywords[m]) !== -1 && node.offsetHeight < 120 && node.children.length <= 4)) {
-          node.style.setProperty('display', 'none', 'important');
-          if (node.tagName === 'BUTTON' && node.parentElement && node.parentElement !== document.body && node.parentElement.offsetHeight < 95) {
-            node.parentElement.style.setProperty('display', 'none', 'important');
-          }
-        }
-      }
-    }
-
-    // 3. 隱藏右側「訪視」與「編輯」垂直頁籤按鈕（不影響內部隱藏的 CSV input）
-    var sideBtns = document.querySelectorAll('button, div');
-    for (var r = 0; r < sideBtns.length; r++) {
-      var rb = sideBtns[r];
-      var rt = (rb.textContent || '').replace(/\\s+/g, '');
-      if ((rt === '訪視' || rt === '編輯') && rb.offsetWidth > 0 && rb.offsetWidth < 68 && rb.offsetHeight > 36 && rb.offsetHeight < 140) {
-        rb.style.setProperty('display', 'none', 'important');
-      }
-    }
-
-    // 4. 取消勾選並隱藏左側「訪視對象」核取框與右下角訪視圖例；統計卡片支援拖曳
+  function hideVisitLayer() {
     var labels = document.querySelectorAll('label');
     for (var l = 0; l < labels.length; l++) {
       var lt = (labels[l].textContent || '').replace(/\\s+/g, '');
@@ -2058,86 +1976,15 @@
         labels[l].style.setProperty('display', 'none', 'important');
       }
     }
-    var divs = document.querySelectorAll('div');
-    for (var g = 0; g < divs.length; g++) {
-      var gt = (divs[g].textContent || '').replace(/\\s+/g, '');
-      if (gt.indexOf('待受訪') !== -1 && gt.indexOf('排訪中') !== -1 && gt.indexOf('低信心') !== -1 && divs[g].offsetHeight < 220) {
-        divs[g].style.setProperty('display', 'none', 'important');
-      }
-      if (gt.indexOf('服務網人數') !== -1 && gt.indexOf('總計') !== -1 && divs[g].offsetWidth < 420 && divs[g].offsetHeight > 80) {
-        makeCardDraggable(divs[g]);
-      }
-    }
-    // 5. 自動點擊「編輯村里」面板右上角收合按鈕（由原生邏輯釋放右側空間）
-    var allHeads = document.querySelectorAll('h1, h2, h3, h4, div, span');
-    for (var h = 0; h < allHeads.length; h++) {
-      var ht = (allHeads[h].textContent || '').replace(/\s+/g, '');
-      if (ht === '編輯村里' && allHeads[h].offsetParent !== null) {
-        var panel = allHeads[h].closest('aside, section, div');
-        while (panel && panel.parentElement && panel.parentElement !== document.body && panel.offsetHeight < 250) {
-          panel = panel.parentElement;
-        }
-        if (panel && panel.offsetWidth > 180) {
-          var panelBtns = panel.querySelectorAll('button');
-          var clickedCollapse = false;
-          for (var pb = 0; pb < panelBtns.length; pb++) {
-            var pbt = (panelBtns[pb].textContent || '').replace(/\s+/g, '');
-            if (pbt === '>' || pbt === '›' || pbt === '»' || pbt === '收合' || (panelBtns[pb].title || '').indexOf('收合') !== -1) {
-              panelBtns[pb].click();
-              clickedCollapse = true;
-              break;
-            }
-          }
-          if (!clickedCollapse) {
-            panel.style.setProperty('display', 'none', 'important');
-          }
-          setTimeout(function() {
-            try {
-              window.dispatchEvent(new Event('resize'));
-              if (typeof map !== 'undefined' && map && typeof map.invalidateSize === 'function') {
-                map.invalidateSize(true);
-              }
-            } catch (_) {}
-          }, 150);
-        }
-        break;
-      }
-    }
-    // 6. 收合後隱藏右側「編輯」與「訪視」垂直頁籤（條件放寬，確保最右側垂直條消失）
-    var rightTabs = document.querySelectorAll('button, div, a, span');
-    for (var rtIdx = 0; rtIdx < rightTabs.length; rtIdx++) {
-      var tabEl = rightTabs[rtIdx];
-      if (tabEl.id === 'kcv-pinned-netcount-btn') continue;
-      var tabTxt = (tabEl.textContent || '').replace(/\s+/g, '');
-      if ((tabTxt === '編輯' || tabTxt === '訪視') && tabEl.offsetWidth > 0 && tabEl.offsetWidth < 90 && tabEl.offsetHeight > 20) {
-        tabEl.style.setProperty('display', 'none', 'important');
-        tabEl.style.setProperty('visibility', 'hidden', 'important');
-        tabEl.style.setProperty('width', '0', 'important');
-        tabEl.style.setProperty('pointer-events', 'none', 'important');
-        // 若父層是窄的右側容器，一併隱藏
-        if (tabEl.parentElement && tabEl.parentElement !== document.body && tabEl.parentElement.offsetWidth < 120) {
-          tabEl.parentElement.style.setProperty('display', 'none', 'important');
-        }
-      }
-    }
   }
-    // v1.21+：左側篩選面板收合（保留頁籤可展開）
-    var leftPanel = document.getElementById('vac-zone-filter');
-    if (leftPanel) {
-      leftPanel.classList.add('vac-collapsed');
-      leftPanel.style.removeProperty('display');
-    }
-    var leftTab = document.getElementById('vac-left-tab');
-    if (leftTab) {
-      leftTab.setAttribute('aria-expanded', 'false');
-      leftTab.style.removeProperty('display');
-    }
-    // 地圖容器填滿可用空間
-    var mapWrap = document.querySelector('.leaflet-container');
-    if (mapWrap && mapWrap.parentElement) {
-      mapWrap.parentElement.style.setProperty('width', '100%', 'important');
-    }
 
+  function applyKcvMapCustomizations() {
+    applyTimer = null;
+    var title = deidentifyTitle();
+    pinNetCountButton(title);
+    lockEditor();
+    hideVisitLayer();
+  }
 
   function findCsvZoneInput() {
     var inputs = Array.from(document.querySelectorAll('input[type="file"]'));
@@ -2152,7 +1999,8 @@
     });
     for (var i = 0; i < csvInputs.length; i++) {
       var acc = (csvInputs[i].getAttribute('accept') || '').toLowerCase();
-      var parentTxt = ((csvInputs[i].closest('div, label') && csvInputs[i].closest('div, label').textContent) || '');
+      var box = csvInputs[i].closest('div, label');
+      var parentTxt = (box && box.textContent) || '';
       if (parentTxt.indexOf('責任區') !== -1 || parentTxt.indexOf('CSV') !== -1 || acc.indexOf('csv') !== -1 || acc.indexOf('xlsx') !== -1) {
         return csvInputs[i];
       }
@@ -2169,12 +2017,11 @@
     }
     if (e.data.type === 'KCV_FORCE_RESTYLE') {
       try {
-        // 強制重設著色鍵值並重新套用篩選
-        if (typeof zoneLayer !== 'undefined' && zoneLayer) {
-          if (typeof visitLayers === 'function') visitLayers(zoneLayer, function(l) { l._vacPaintKey = undefined; });
+        if (typeof zoneLayer !== 'undefined' && zoneLayer && typeof visitLayers === 'function') {
+          visitLayers(zoneLayer, function(l) { l._vacPaintKey = undefined; });
         }
-        if (typeof netLayer !== 'undefined' && netLayer) {
-          if (typeof visitLayers === 'function') visitLayers(netLayer, function(l) { l._vacPaintKey = undefined; });
+        if (typeof netLayer !== 'undefined' && netLayer && typeof visitLayers === 'function') {
+          visitLayers(netLayer, function(l) { l._vacPaintKey = undefined; });
         }
         if (typeof applyFilter === 'function') applyFilter();
         if (typeof scheduleLeftFilterSync === 'function') scheduleLeftFilterSync({ clearSticky: false });
@@ -2185,27 +2032,31 @@
       var targetInput = findCsvZoneInput();
       if (!targetInput) return;
       try {
+        // 同步方案時暫時解除停用，避免隱藏面板內的匯入 input 被 disabled 擋下
+        targetInput.disabled = false;
         var file = new File([e.data.csvText], 'plan_sync.csv', { type: 'text/csv;charset=utf-8' });
         var dt = new DataTransfer();
         dt.items.add(file);
         targetInput.files = dt.files;
         targetInput.dispatchEvent(new Event('change', { bubbles: true }));
-        setTimeout(applyKcvMapCustomizations, 350);
+        scheduleApply(350);
       } catch (err) {
         console.warn('CSV sync failed:', err);
       }
     }
   });
 
+  // 腳本位於 </body> 前，DOM 已就緒：立即套用一次，避免畫面閃現編輯面板
+  applyKcvMapCustomizations();
+
   window.addEventListener('load', function() {
     applyKcvMapCustomizations();
-    setTimeout(applyKcvMapCustomizations, 350);
-    setTimeout(applyKcvMapCustomizations, 1000);
-    setTimeout(triggerLeafletResize, 200);
-    setTimeout(triggerLeafletResize, 800);
-    var mo = new MutationObserver(function() { applyKcvMapCustomizations(); });
+    setTimeout(applyKcvMapCustomizations, 400);
+    setTimeout(applyKcvMapCustomizations, 1200);
+    triggerLeafletResize();
+    var mo = new MutationObserver(function() { scheduleApply(150); });
     mo.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', applyKcvMapCustomizations);
+    window.addEventListener('resize', function() { scheduleApply(150); });
     window.parent.postMessage({ type: 'KCV_MAP_READY' }, '*');
   });
 })();
@@ -2274,6 +2125,12 @@
         .replace(/高雄市榮服處責任區地圖/g, '責任區地圖')
         .replace(/高雄市榮民服務處/g, '')
         .replace(/高雄市榮服處/g, '');
+
+      // v1.22：從原始碼層鎖死右側「編輯村里」面板（永不展開，含 sessionStorage 記憶狀態與視窗縮放）
+      htmlText = htmlText
+        .replace(/var rightOpen = init\.right;/g, 'var rightOpen = false;')
+        .replace(/rightOpen = !!open;/g, 'rightOpen = false;')
+        .replace(/rightOpen = d\.right;/g, 'rightOpen = false;');
 
       Object.keys(assetUrls).forEach(relPath => {
         const escaped = relPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
