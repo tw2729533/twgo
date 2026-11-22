@@ -3,7 +3,7 @@
 <head>
   <!--
   ==================== 《63 服務網儀表板專案記憶》 ====================
-  1. 版本規範：採遞增版號（目前 v1.21，已修正 Banner 文案、DB_KEY 版號、showProg 全域、extractNumFromLabel），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
+  1. 版本規範：採遞增版號（目前 v1.21，已修正 extractNumFromLabel、IndexedDB 地圖快取、診斷報告文案、showProg 計時器），已修正 Banner 文案、DB_KEY 版號、showProg 全域、extractNumFromLabel），每次修改嚴格鎖定現有版面與 CSS 結構不變；詳細錯誤紀錄同步維護於 kcv_project_memory.md。
   2. 開放網頁去識別化（v1.17～v1.21）：
      - 移除所有對外可見之機關名稱與縮寫（標題列、瀏覽器分頁標題、頁尾、匯出檔名、Logo 改為 SRV）。
      - 內嵌離線地圖採「HTML/JS 載入前原始碼替換 + DOM TreeWalker」雙重去識別化，標題統一改為「責任區地圖」，並依實際寬度重算「服務網人數」按鈕緊鄰右側座標（z-index 置頂防遮擋）。
@@ -876,8 +876,8 @@
 
     function extractNumFromLabel(label) {
       const s = String(label || '');
-      // 優先取括號內數字（如 第9服務網(55)），否則取第一組數字
-      const paren = s.match(/\((\d+)\)/);
+      // 優先取括號內數字（相容 (55) 與 (55網)）
+      const paren = s.match(/[（(](\d+)網?[）)]/);
       if (paren) return parseInt(paren[1], 10);
       const m = s.match(/(\d+)(?:[\-_之](\d+))?/);
       if (!m) return 9999;
@@ -2853,7 +2853,7 @@
                 </tbody>
               </table>
             </div>
-          ` : '<div class="text-xs text-slate-500">目前為【範本】預覽模式，尚未匯入本機正式檔案。</div>'}
+          ` : (!state.isDemo ? '<div class="text-xs text-emerald-700 font-semibold">目前使用網頁內嵌之正式基準數據（893 里・含 20261113 訪視次數與方案 1～7 配置）。</div>' : '<div class="text-xs text-slate-500">目前為【範本】預覽模式，尚未匯入本機正式檔案。</div>')}
         </div>
       `;
       modal.classList.remove('hidden');
@@ -2963,7 +2963,8 @@
         risk4: row[3], risk3: row[4], risk2: row[5], risk1: row[6],
         nets: { base: row[8] },
         zones: { base: row[7] },
-        visits: row[9] || 0
+        visits: row[9] || 0,
+        key: (row[0] || '') + '|' + (row[1] || '')
       }));
       // Apply plan assignments
       Object.keys(EMBEDDED_DATA.p || {}).forEach(pk => {
@@ -2985,13 +2986,15 @@
 
 
     // 全域進度訊息（避免啟動流程呼叫未定義的 showProg）
+    let progTimer = null;
     function showProg(msg) {
       const el = document.getElementById('uploadProgressMsg');
       if (el) {
         el.textContent = msg;
         el.classList.remove('hidden');
+        if (progTimer) clearTimeout(progTimer);
         if (msg && !msg.includes('⚠️')) {
-          setTimeout(() => el.classList.add('hidden'), 4000);
+          progTimer = setTimeout(() => el.classList.add('hidden'), 4000);
         }
       }
     }
@@ -3000,8 +3003,16 @@
       // Prefer embedded data (v1.21)
       if (loadEmbeddedData()) {
         renderAll();
-        showProg('已載入內嵌正式資料（方案1～7）。正在嘗試載入離線地圖...');
-        // 即使有內嵌資料，仍嘗試從同目錄 data.zip 載入離線地圖
+        // 先檢查 IndexedDB 是否已有離線地圖快取
+        const cached = await loadStateFromIndexedDB();
+        if (cached && cached.offlineMapFiles && cached.offlineMapFiles['kaohsiung-vac-zones.html']) {
+          state.offlineMapFiles = cached.offlineMapFiles;
+          await mountOfflineMapIfAvailable();
+          showProg('已載入內嵌資料，並從本機快取還原離線地圖。');
+          return;
+        }
+        showProg('已載入內嵌正式資料。正在嘗試載入離線地圖...');
+        // 快取沒有地圖時，才從同目錄 data.zip 載入
         if (location.protocol === 'http:' || location.protocol === 'https:') {
           setTimeout(async () => {
             const ok = await tryFetchHostedZip(false);
