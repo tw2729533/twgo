@@ -20,6 +20,7 @@
      - 4 個常見 ANSI 難字自動還原（?後里➔廍後里、公?里➔公舘里、?山里➔峯山里、?埔里➔坔埔里）與異體字統一。
      - 診斷報告彈窗新增「原 54 網及方案 1～7 數據完整性快檢表」，自動檢查各方案網數（54/63）與人數。
   8. 內嵌離線地圖客製（v1.5～v1.21）：
+     - v1.21 修正：內嵌資料啟動後仍會嘗試從同目錄 data.zip 自動載入離線地圖。
      - v1.21 補入：各里訪視次數（源自20261113統計表），分頁5圖表與負荷計算恢復正常。
      - 先將「服務網人數」按鈕抽離至 body 固定於「責任區地圖」標題右側，再隱藏上方工具列（工具、收合工具、我的位置、時速、排訪、門牌提示條）、右側「訪視」與「編輯」垂直頁籤、左側「訪視對象」勾選列與右下角訪視圖例。
      - 同步重寫 leaflet.css 內 images/ 路徑修正右上角圖層按鈕空白問題；CSV 同步精準鎖定「匯入責任區 CSV／Excel」欄位排除 JSON 還原框。
@@ -2971,7 +2972,11 @@
       // Prefer embedded data (v1.21)
       if (loadEmbeddedData()) {
         renderAll();
-        showProg('已載入內嵌正式資料（方案1～7），無需額外載入 ZIP。');
+        showProg('已載入內嵌正式資料（方案1～7）。');
+        // 即使有內嵌資料，仍嘗試從同目錄 data.zip 載入離線地圖
+        if (location.protocol === 'http:' || location.protocol === 'https:') {
+          setTimeout(() => tryFetchHostedZip(false), 300);
+        }
         return;
       }
       // Fallback to cache or demo
@@ -2989,6 +2994,9 @@
         return;
       }
       loadDemoData(false);
+      if (location.protocol === 'http:' || location.protocol === 'https:') {
+        await tryFetchHostedZip(false);
+      }
     });
   </script>
 </body>
